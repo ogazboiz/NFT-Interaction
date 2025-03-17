@@ -13,6 +13,7 @@ const Account = () => {
   const { data: walletClient } = useWalletClient()
   const [recipientMap, setRecipientMap] = useState({})
   const [isVisible, setIsVisible] = useState(false)
+  const [activeTab, setActiveTab] = useState("collection")
 
   useEffect(() => {
     // Trigger animation after component mounts
@@ -41,10 +42,9 @@ const Account = () => {
 
     try {
       const provider = new ethers.BrowserProvider(walletClient)
-      const signer = await provider.getSigner() // Get signer from wallet client
-      await transferNFT(tokenId, recipient, signer) // Pass signer properly
+      const signer = await provider.getSigner()
+      await transferNFT(tokenId, recipient, signer)
 
-      // Clear input field after successful transfer
       setRecipientMap((prev) => ({
         ...prev,
         [tokenId]: "",
@@ -54,86 +54,126 @@ const Account = () => {
     }
   }
 
+  const tabs = [
+    { id: "collection", label: "MY COLLECTION", icon: "ph:image-square-bold" },
+    { id: "activity", label: "ACTIVITY", icon: "ph:activity-bold" },
+    { id: "settings", label: "SETTINGS", icon: "ph:gear-six-bold" },
+  ]
+
   return (
     <div
       className={`transition-all duration-700 ${isVisible ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-8"}`}
     >
-      <main>
-        <div className="p-4">
-          <h1 className="text-2xl font-bold mb-4 transition-colors duration-300 hover:text-blue-600">Account Page</h1>
-          {isConnected ? (
-            <>
-              <p className="mb-2 transition-all duration-300">Manage your NFT collection</p>
-              <p className="text-gray-600 mb-4 transition-all duration-300">
-                Connected Wallet: <span className="font-medium">{userAddress}</span>
-              </p>
-              <p className="font-medium mb-6 text-lg transition-all duration-300">
-                You own <span className="text-blue-600">{userNFTs.length}</span> NFT(s)
-              </p>
+      <main className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <div className="relative">
+            <div className="h-48 w-full bg-gradient-hot rounded-xl"></div>
+            <div className="absolute -bottom-12 left-8 hexagon w-24 h-24 border-4 border-[#13111C] bg-gradient-hot flex items-center justify-center">
+              <Icon icon="ph:user-bold" className="w-12 h-12 text-white" />
+            </div>
+          </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mt-4">
-                {userNFTs.length > 0 ? (
-                  userNFTs.map((tokenId, index) => {
-                    const metadata = tokenMetaData.get(tokenId)
-                    if (!metadata) return null
+          <div className="mt-16 flex flex-col md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gradient-hot">MY NFT COLLECTION</h1>
+              {isConnected && (
+                <p className="text-[#9E9E9E] flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-400"></span>
+                  {shortenAddress(userAddress)}
+                </p>
+              )}
+            </div>
 
-                    return (
-                      <div
-                        key={tokenId}
-                        className="border border-primary/20 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1"
-                        style={{
-                          animationDelay: `${index * 100}ms`,
-                          animation: isVisible ? `fadeSlideIn 500ms ${index * 100}ms both` : "none",
-                        }}
-                      >
-                        <NFTCard
-                          metadata={metadata}
-                          mintPrice={mintPrice}
-                          tokenId={tokenId}
-                          nextTokenId={nextTokenId}
+            <div className="mt-4 md:mt-0 flex gap-2">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all duration-200 ${
+                    activeTab === tab.id
+                      ? "bg-gradient-hot text-white shadow-md"
+                      : "bg-[#211A2E] text-[#9E9E9E] hover:bg-[#2A2339]"
+                  }`}
+                >
+                  <Icon icon={tab.icon} className="w-5 h-5" />
+                  <span className="hidden sm:inline text-xs font-medium tracking-wider">{tab.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {!isConnected ? (
+          <div className="text-center p-12 border border-dashed border-red-300 rounded-xl bg-[#211A2E]/50">
+            <Icon icon="ph:warning-circle-bold" className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <p className="text-red-400 text-lg font-medium">Please connect your wallet to view your NFTs</p>
+          </div>
+        ) : userNFTs.length === 0 ? (
+          <div className="text-center p-12 border border-dashed border-[#FF3D71]/30 rounded-xl bg-[#211A2E]/50">
+            <Icon icon="ph:image-square-bold" className="w-16 h-16 text-[#FF3D71] mx-auto mb-4" />
+            <p className="text-[#FF3D71] text-lg font-medium">You don't own any NFTs yet</p>
+            <p className="text-[#9E9E9E] mt-2">Mint some NFTs to see them here</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {userNFTs.map((tokenId, index) => {
+              const metadata = tokenMetaData.get(tokenId)
+              if (!metadata) return null
+
+              return (
+                <div
+                  key={tokenId}
+                  className="card-neo overflow-hidden shadow-md hover:shadow-lg transition-all duration-300"
+                  style={{
+                    animationDelay: `${index * 100}ms`,
+                    animation: isVisible ? `slideUp 500ms ${index * 100}ms both` : "none",
+                  }}
+                >
+                  <div className="p-4">
+                    <NFTCard metadata={metadata} mintPrice={mintPrice} tokenId={tokenId} nextTokenId={nextTokenId} />
+                  </div>
+
+                  <div className="bg-[#211A2E] p-4 border-t border-[#FF3D71]/10">
+                    <p className="text-[#FF3D71] font-medium mb-2 flex items-center gap-2">
+                      <Icon icon="ph:arrow-square-out-bold" className="w-5 h-5" />
+                      TRANSFER NFT
+                    </p>
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="Enter recipient address"
+                          value={recipientMap[tokenId] || ""}
+                          onChange={(e) => handleInputChange(tokenId, e.target.value)}
+                          className="w-full px-4 py-3 pr-10 rounded-lg border border-[#FF3D71]/20 bg-[#1A1625] text-white focus:ring-2 focus:ring-[#FF3D71] focus:border-[#FF3D71] transition-all duration-200"
                         />
-                        <div className="mt-4 space-y-2">
-                          <div className="flex items-center gap-2 text-gray-600 mb-2">
-                            <Icon icon="mdi:transfer" className="w-5 h-5" />
-                            <span>Transfer this NFT</span>
-                          </div>
-                          <input
-                            type="text"
-                            placeholder="Enter recipient address"
-                            value={recipientMap[tokenId] || ""}
-                            onChange={(e) => handleInputChange(tokenId, e.target.value)}
-                            className="mt-2 p-3 border border-gray-300 rounded-lg w-full transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                          <button
-                            className="mt-2 bg-primary text-secondary px-4 py-3 rounded-lg w-full transition-all duration-300 hover:bg-primary/90 hover:shadow-md transform hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2"
-                            onClick={() => handleTransfer(tokenId)}
-                          >
-                            <Icon icon="mdi:send" className="w-5 h-5" />
-                            Transfer NFT
-                          </button>
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#9E9E9E]">
+                          <Icon icon="ph:address-book-bold" className="w-5 h-5" />
                         </div>
                       </div>
-                    )
-                  })
-                ) : (
-                  <p className="col-span-full text-center text-gray-500 p-8 border border-dashed border-gray-300 rounded-xl">
-                    No NFTs found. Mint some NFTs to see them here.
-                  </p>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="text-center p-8 border border-dashed border-red-300 rounded-xl bg-red-50">
-              <p className="text-red-500 flex items-center justify-center gap-2">
-                <Icon icon="mdi:alert-circle" className="w-6 h-6" />
-                Please connect your wallet to view your NFTs.
-              </p>
-            </div>
-          )}
-        </div>
+                      <button
+                        onClick={() => handleTransfer(tokenId)}
+                        className="w-full py-3 rounded-lg bg-gradient-hot text-white font-medium flex items-center justify-center gap-2 transition-all duration-300 hover:shadow-md transform hover:-translate-y-0.5 active:translate-y-0"
+                      >
+                        <Icon icon="ph:paper-plane-right-bold" className="w-5 h-5" />
+                        TRANSFER
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </main>
     </div>
   )
+}
+
+// Helper function to shorten address
+const shortenAddress = (address) => {
+  if (!address) return ""
+  return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
 export default Account
