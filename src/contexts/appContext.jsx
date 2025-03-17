@@ -1,141 +1,143 @@
-import { Contract, } from "ethers";
+import { Contract } from "ethers";
 import { createContext, useContext, useEffect, useState } from "react";
 import { getReadOnlyProvider } from "../utils";
 import NFT_ABI from "../ABI/nft.json";
 import { useAccount } from "wagmi";
 
-const appContext = createContext();
+const AppContext = createContext();
 
 export const useAppContext = () => {
-    const context = useContext(appContext);
+    const context = useContext(AppContext);
     if (!context) {
         throw new Error("useAppContext must be used within an AppProvider");
     }
-
     return context;
 };
 
 export const AppProvider = ({ children }) => {
-    const {address: userAddress, isConnected} = useAccount();
+    const { address: userAddress, isConnected } = useAccount();
 
     const [nextTokenId, setNextTokenId] = useState(null);
     const [maxSupply, setMaxSupply] = useState(null);
     const [baseTokenURI, setBaseTokenURI] = useState("");
     const [tokenMetaData, setTokenMetaData] = useState(new Map());
     const [mintPrice, setMintPrice] = useState(null);
-    const [userNFTs, setUserNFTs] = useState([])
+    const [userNFTs, setUserNFTs] = useState([]);
 
     useEffect(() => {
-        const contract = new Contract(
-            import.meta.env.VITE_NFT_CONTRACT_ADDRESS,
-            NFT_ABI,
-            getReadOnlyProvider()
-        );
-        contract
-            .nextTokenId()
+        console.log("Fetching contract details...");
+
+        const provider = getReadOnlyProvider();
+        if (!provider) {
+            console.error("Provider is not available.");
+            return;
+        }
+
+        const contractAddress = import.meta.env.VITE_NFT_CONTRACT_ADDRESS;
+        if (!contractAddress) {
+            console.error("VITE_NFT_CONTRACT_ADDRESS is missing.");
+            return;
+        }
+
+        const contract = new Contract(contractAddress, NFT_ABI, provider);
+
+        contract.nextTokenId()
             .then((id) => setNextTokenId(id))
-            .catch((error) => console.error("error: ", error));
+            .catch((error) => console.error("Error fetching nextTokenId:", error));
 
-        contract
-            .baseTokenURI()
+        contract.baseTokenURI()
             .then((uri) => setBaseTokenURI(uri))
-            .catch((error) => console.error("error: ", error));
+            .catch((error) => console.error("Error fetching baseTokenURI:", error));
 
-        contract
-            .maxSupply()
+        contract.maxSupply()
             .then((supply) => setMaxSupply(supply))
-            .catch((error) => console.error("error: ", error));
+            .catch((error) => console.error("Error fetching maxSupply:", error));
 
-        contract
-            .mintPrice()
+        contract.mintPrice()
             .then((price) => setMintPrice(price))
-            .catch((error) => console.error("error: ", error));
+            .catch((error) => console.error("Error fetching mintPrice:", error));
     }, []);
 
     useEffect(() => {
         if (!maxSupply || !baseTokenURI) return;
-        // const tokenIds = Array.from({ length: Number(maxSupply) }, (_, i) => i);
 
-        const tokenIds = [];
-        for (let i = 0; i < maxSupply; i++) {
-            tokenIds.push(i);
-        }
+        console.log("Fetching token metadata...");
+        const tokenIds = Array.from({ length: Number(maxSupply) }, (_, i) => i);
 
-        const promises = tokenIds.map((id) => {
-            return fetch(`${baseTokenURI}${id}.json`)
+        const promises = tokenIds.map((id) =>
+            fetch(`${baseTokenURI}${id}.json`)
                 .then((response) => response.json())
-                .then((data) => {
-                    return data;
-                });
-        });
+                .then((data) => ({ id, data }))
+        );
 
         Promise.all(promises)
             .then((responses) => {
-                const tokenMetaData = new Map();
-                responses.forEach((response, index) => {
-                    tokenMetaData.set(index, response);
-                });
-                setTokenMetaData(tokenMetaData);
+                const metadataMap = new Map();
+                responses.forEach(({ id, data }) => metadataMap.set(id, data));
+                setTokenMetaData(metadataMap);
+                console.log("Token metadata loaded.");
             })
-            .catch((error) => console.error("error: ", error));
+            .catch((error) => console.error("Error fetching metadata:", error));
     }, [baseTokenURI, maxSupply]);
-    
-    useEffect(() => {
-        const contract = new Contract(
-            import.meta.env.VITE_NFT_CONTRACT_ADDRESS,
-            NFT_ABI,
-            getReadOnlyProvider()
-        );
 
-        contract.nextTokenId()
-            .then((id) => setNextTokenId(id))
-            .catch((error) => console.error(error));
+    useEffect(() => {
+        console.log("Setting up event listener for 'Minted' event...");
+        
+        const provider = getReadOnlyProvider();
+        if (!provider) {
+            console.error("Provider is not available for event listener.");
+            return;
+        }
+
+        const contract = new Contract(import.meta.env.VITE_NFT_CONTRACT_ADDRESS, NFT_ABI, provider);
 
         const handleMintedNFT = (receiver, nftTokenId) => {
-            console.log(`This NFT ${nftTokenId} has been succesfully minted to ${receiver}`);
+            console.log(`NFT ${nftTokenId} minted to ${receiver}`);
+            contract.nextTokenId()
+                .then((id) => setNextTokenId(id))
+                .catch((error) => console.error("Error updating nextTokenId:", error));
+        };
 
-        contract.nextTokenId()
-        .then((id) => setNextTokenId(id))
-        .catch((error) => console.error(`experienced error while updating nextTokenID:`, error));
-        }
-
-        //The event listener
         contract.on("Minted", handleMintedNFT);
 
-        // return as a function is always the clean up function
         return () => {
-            contract.off("Minted", handleMintedNFT)
-        }
-    })  
+            console.log("Cleaning up 'Minted' event listener...");
+            contract.off("Minted", handleMintedNFT);
+        };
+    }, []);
 
     useEffect(() => {
         if (!userAddress || !isConnected || nextTokenId === null) return;
         fetchUserNFTs();
-      }, [userAddress, isConnected, nextTokenId]);
-    
-      const fetchUserNFTs = async () => {
-        try {
-          const contract = new Contract(
-            import.meta.env.VITE_NFT_CONTRACT_ADDRESS,
-            NFT_ABI,
-            getReadOnlyProvider()
-          );
-    
-          const userOwnedNFTs = [];
-          for (let i = 0; i < nextTokenId; i++) {
-            const owner = await contract.ownerOf(i);
-            if (owner.toLowerCase() === userAddress.toLowerCase()) {
-              userOwnedNFTs.push(i);
-            }
-          }
-    
-          setUserNFTs(userOwnedNFTs);
-        } catch (error) {
-          console.error("Error fetching user NFTs: ", error);
-        }
-      };
+    }, [userAddress, isConnected, nextTokenId]);
 
-      const transferNFT = async (tokenId, recipientAddress, signer) => {
+    const fetchUserNFTs = async () => {
+        try {
+            console.log(`Fetching NFTs owned by ${userAddress}...`);
+            const provider = getReadOnlyProvider();
+            if (!provider) {
+                console.error("Provider is not available.");
+                return;
+            }
+
+            const contract = new Contract(import.meta.env.VITE_NFT_CONTRACT_ADDRESS, NFT_ABI, provider);
+
+            const userOwnedNFTs = [];
+            for (let i = 0; i < nextTokenId; i++) {
+                const owner = await contract.ownerOf(i);
+                if (owner.toLowerCase() === userAddress.toLowerCase()) {
+                    userOwnedNFTs.push(i);
+                }
+            }
+
+            setUserNFTs(userOwnedNFTs);
+            console.log(`User NFTs: ${userOwnedNFTs}`);
+        } catch (error) {
+            console.error("Error fetching user NFTs:", error);
+        }
+    };
+
+    const transferNFT = async (tokenId, recipientAddress, signer) => {
         if (!recipientAddress) {
             console.error("Recipient address is required.");
             return;
@@ -144,39 +146,47 @@ export const AppProvider = ({ children }) => {
             console.error("No signer available. Ensure your wallet is connected.");
             return;
         }
-    
+
         try {
+            console.log(`Transferring NFT ${tokenId} to ${recipientAddress}...`);
             const contract = new Contract(
                 import.meta.env.VITE_NFT_CONTRACT_ADDRESS,
                 NFT_ABI,
                 signer
             );
-    
+
             const tx = await contract.safeTransferFrom(await signer.getAddress(), recipientAddress, tokenId);
             await tx.wait(); // Wait for confirmation
             console.log(`NFT ${tokenId} transferred to ${recipientAddress}`);
-    
+
             // Refresh user NFTs after transfer
             fetchUserNFTs();
         } catch (error) {
             console.error("Error transferring NFT:", error);
         }
     };
-    
+
+    console.log("Rendering AppProvider with state:", {
+        nextTokenId,
+        maxSupply,
+        baseTokenURI,
+        mintPrice,
+        userNFTs,
+    });
 
     return (
-        <appContext.Provider
+        <AppContext.Provider
             value={{
                 nextTokenId,
                 maxSupply,
                 baseTokenURI,
                 tokenMetaData,
                 mintPrice,
-                userNFTs, 
+                userNFTs,
                 transferNFT,
             }}
         >
             {children}
-        </appContext.Provider>
+        </AppContext.Provider>
     );
 };
